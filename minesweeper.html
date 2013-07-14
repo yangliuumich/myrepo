@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Minesweeper</title>
+</head>
+<body>
+	<h1>Minesweeper</h1>
+	<canvas id='myCanvas' width='400' height='500' style='border:5px solid black' oncontextmenu='return false;'>Your browser doesn't support html5 canvas...</canvas>
+	
+	<script>
+	var c = document.getElementById('myCanvas');
+	var ctx = c.getContext('2d');
+	var WIDTH = 8;
+	var HEIGHT = 8;
+	var BOMB_NUM = 10;
+	var bomb_left = BOMB_NUM;
+	var time = 0;
+	var face = 'middle';
+	var is_game_over = false;
+	var is_winning = false;
+	var is_playing = false;
+	var board_cover = new Array(HEIGHT);
+	var board_back = new Array(HEIGHT);
+	for (var i = 0; i < HEIGHT; i++){
+		board_cover[i] = new Array(WIDTH);
+		board_back[i] = new Array(WIDTH);
+	}
+	var directions = [[-1,-1],[-1,0],[-1,1],[0,1],[0,-1],[1,-1],[1,0],[1,1]];
+	var zero_graph = new Array(WIDTH * HEIGHT);
+	var zero_tree_size = new Array(WIDTH * HEIGHT);
+	Array.prototype.contains = function(obj){
+		for (var i = 0; i < this.length; i++){
+			if (this[i][0] === obj[0] && this[i][1] === obj[1]){
+				return true;
+			}
+		}
+		return false;
+	}
+	function timer(){
+		if (!is_winning && !is_game_over && is_playing){
+			time += 1;
+			ctx.putImageData(timer_patch, 300, 0);
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText(time, 325, 68);
+		}
+	}
+	function new_game(){
+		is_game_over = false;
+		is_winning = false;
+		is_playing = false;
+		time = 0;
+		face = 'middle';
+		// create new clear board cover
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				board_cover[i][j]= 'c'; //covering, unopened
+			}
+		}
+		// create new bomb map
+		bomb_left = BOMB_NUM;
+		var bomb = [];
+		for (var i = 0; i < BOMB_NUM; i++){
+			var random_col = Math.floor(Math.random() * WIDTH);
+			var random_row = Math.floor(Math.random() * HEIGHT);
+			while (bomb.contains([random_row, random_col])){
+				random_col = Math.floor(Math.random() * WIDTH);
+				random_row = Math.floor(Math.random() * HEIGHT);
+			}
+			bomb.push([random_row, random_col]);
+		}
+		// create back board information
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				board_back[i][j]= '';  // new clear back board
+			}
+		}
+		for (var b = 0; b < BOMB_NUM; b++){
+			board_back[bomb[b][0]][bomb[b][1]] = 'b'; //add bombs
+		}
+		var counter = 0; // how many bombs there are around 
+		var around = []; // the coordinates of the blocks around
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				if (board_back[i][j]!=='b'){
+					counter = 0;
+					around = [];	
+					for (var iter = 0; iter < directions.length; iter++) {
+						around.push([i + directions[iter][0], j + directions[iter][1]]);
+					}
+					for (var n = 0; n < around.length; n++){
+						if (bomb.contains(around[n])){
+							counter += 1;
+						}
+				    }
+					board_back[i][j] = counter;
+				}
+			}
+		}
+		zero_graph = new Array(WIDTH * HEIGHT);
+		zero_tree_size = new Array(WIDTH * HEIGHT);
+		for (var p = 0; p < WIDTH * HEIGHT; p++){
+			zero_graph[p] = p;
+		}
+		for (var i = 0; i < WIDTH * HEIGHT; i++){
+			zero_tree_size[i] = 1;
+		}
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				union_around([i,j]);
+			}
+		}
+		draw_frame();
+		draw_face(face);
+	}
+	function find_root(p1){
+		var root = p1;
+		while(root != zero_graph[root]){
+			zero_graph[root] = zero_graph[zero_graph[root]];
+			root = zero_graph[root];
+		}
+		return root;
+	}
+	function union(p1, p2){
+		var root_p1 = find_root(p1);
+		var root_p2 = find_root(p2);
+		if (root_p1 !== root_p2){
+			if (zero_tree_size[root_p1] < zero_tree_size[root_p2]){
+				zero_graph[root_p1] = root_p2;			
+				zero_tree_size[root_p2] += zero_tree_size[root_p1];
+				zero_tree_size[root_p1] = 0;
+			} else {
+				zero_graph[root_p2] = root_p1;
+				zero_tree_size[root_p1] += zero_tree_size[root_p2];
+				zero_tree_size[root_p2] = 0;
+			}
+		}
+	}
+	function union_around(coordinate){
+		var cur_row = coordinate[0];
+		var cur_col = coordinate[1];
+		if (board_cover[cur_row][cur_col]!=='f' && board_cover[cur_row][cur_col]!=='q'){
+			for (var iter = 0; iter < directions.length; iter++){
+				if (cur_row + directions[iter][0]>=0 && cur_row + directions[iter][0]<HEIGHT && cur_col + directions[iter][1]>=0 && cur_col + directions[iter][1]<WIDTH){
+					if (board_back[cur_row + directions[iter][0]][cur_col + directions[iter][1]]===0){		
+						union(cur_row*WIDTH+cur_col, (cur_row+directions[iter][0])*WIDTH+cur_col+directions[iter][1]);
+					}
+				}
+			}
+		}
+	}
+	function is_openable(coordinate){
+		var cur_row = coordinate[0];
+		var cur_col = coordinate[1];
+		var bomb_count = 0;
+		for (var iter = 0; iter < directions.length; iter++){
+			if (cur_row + directions[iter][0]>=0 && cur_row + directions[iter][0]<HEIGHT && cur_col + directions[iter][1]>=0 && cur_col + directions[iter][1]<WIDTH){		
+				if(board_cover[cur_row + directions[iter][0]][cur_col + directions[iter][1]] === 'q'){
+					return false;
+				} 
+				else if (board_cover[cur_row + directions[iter][0]][cur_col + directions[iter][1]] === 'f'){
+					bomb_count += 1;
+				}
+			}
+		}
+		if (bomb_count === board_back[cur_row][cur_col]){
+			return true;
+		} else {
+			return false;
+		}
+	}
+	function unlock_around(coordinate){
+		var cur_row = coordinate[0];
+		var cur_col = coordinate[1];
+		if (is_openable([cur_row, cur_col])){
+			for (var iter = 0; iter < directions.length; iter++){
+				if (cur_row + directions[iter][0]>=0 && cur_row + directions[iter][0]<HEIGHT && cur_col + directions[iter][1]>=0 && cur_col + directions[iter][1]<WIDTH){		
+					if (board_cover[cur_row + directions[iter][0]][cur_col + directions[iter][1]] === 'c'){
+						board_cover[cur_row + directions[iter][0]][cur_col + directions[iter][1]] = 'o';	
+						if (board_back[cur_row + directions[iter][0]][cur_col + directions[iter][1]] === 'b'){
+							game_over();
+						}
+					}
+				}
+			}
+		}
+	}
+	function unlock_zero_group(coordinate){
+		var p = coordinate[0]*WIDTH+coordinate[1];
+		var root = find_root(p);
+		for (var z = 0; z < WIDTH*HEIGHT; z++){
+			if (find_root(z) === root){
+				if (board_back[Math.floor(z/WIDTH)][z%WIDTH]===0){						
+					unlock_around([Math.floor(z/WIDTH), z%WIDTH]);
+				}
+			}
+		}
+	}
+	function draw_frame(){
+		ctx.fillStyle = 'Black';
+		ctx.fillRect(0, 0, 400, 500);
+		ctx.stroke();
+		ctx.strokeStyle = 'White';
+		for (var i = 0; i <= WIDTH; i++){		
+ 			ctx.moveTo(i * 50, 100);
+ 			ctx.lineTo(i * 50, 500);
+			ctx.stroke();
+		}
+		for (var j = 0; j <= HEIGHT; j++){
+			ctx.moveTo(0, 100 + j * 50);
+			ctx.lineTo(400, 100 + j * 50);
+			ctx.stroke();
+		}
+		ctx.fillStyle = '#FF8400'; // restart button
+		ctx.fillRect(165, 15, 70, 70);
+		ctx.stroke();
+		backimg = ctx.getImageData(0, 0, 400, 500);		
+		timer_patch = ctx.getImageData(300,0,100,100);
+	}
+	function check_winning(){
+		if (bomb_left < 0){
+			return false;
+		} else if (bomb_left === 0){
+			for (var i = 0; i < HEIGHT; i++){
+				for (var j = 0; j < WIDTH; j++){
+					if (board_cover[i][j]==='f' && board_back[i][j]!=='b'){
+						return false;
+					}		
+				}						
+			}
+			face = 'winning';
+			return true;
+		} else { // bomb_left > 0
+			for (var i = 0; i < HEIGHT; i++){
+				for (var j = 0; j < WIDTH; j++){
+					if (board_cover[i][j] === 'c' && board_back[i][j]!== 'b'){
+						return false;
+					}	
+				}
+			}
+			face = 'winning';
+			return true;
+		}
+	}
+	function draw_face(direction){
+		switch(direction){	 
+		case 'right':
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText(".", 183, 62);
+			ctx.fillText(".", 217, 62);
+			break;
+		case 'left':
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText(".", 173, 62);
+			ctx.fillText(".", 207, 62);
+			break;
+		case 'winning':
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText("^", 172, 62);
+			ctx.fillText("^", 206, 62);
+			break;
+		case 'die':
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText(">", 172, 62);
+			ctx.fillText("<", 206, 62);
+			break;
+		default:
+			ctx.fillStyle = 'White';
+			ctx.font = '36px Georgia';
+			ctx.fillText(".", 178, 58);
+			ctx.fillText('.',212, 58);
+		}
+	}
+	function update(){
+		ctx.putImageData(backimg, 0, 0);
+		draw_face(face);	
+		if (is_winning){
+			bomb_left = 0;
+			for (var i = 0; i < HEIGHT; i++){
+				for (var j = 0; j < WIDTH; j++){
+					if (board_back[i][j]== 'b'){
+						board_cover[i][j] = 'f';
+					}
+				}
+			}
+		}
+		ctx.fillStyle = 'White';
+		ctx.font = '36px Georgia';
+		ctx.fillText(bomb_left, 25, 68);
+		ctx.fillText(time,325, 68);
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				if (board_cover[i][j] === 'c'){ //unopened blocks
+					ctx.fillStyle = 'Grey';
+					ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+				} else if (board_cover[i][j] === 'f') { //flag, marked by player as bomb.
+					ctx.fillStyle = 'White';
+					ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+					ctx.fillStyle = '#FF8400';
+					ctx.font = '36px Georgia';
+					ctx.fillText('X', j*50 +12, i*50+100+38);
+				} else if (board_cover[i][j] === 'q'){
+					ctx.fillStyle = 'Grey';
+					ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+					ctx.fillStyle = '#FF8400';
+					ctx.font = '36px Georgia';
+					ctx.fillText('?', j*50 +17, i*50+100+39);
+				} else if (board_cover[i][j]=== 'r'){ //revealed, in game over mode.
+					ctx.fillStyle = 'Black';
+					ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+					ctx.fillStyle = 'Red';
+					ctx.font = '36px Georgia';
+					ctx.fillText('X', j*50 +12, i*50+100+38);
+				} else if (board_cover[i][j]=== 'w'){ //wrong guess, in game over mode.
+					ctx.fillStyle = 'Red';
+					ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+					ctx.fillStyle = 'White';
+					ctx.font = '36px Georgia';
+					ctx.fillText('X', j*50 +12, i*50+100+38);
+				}
+				else { //opened blocks
+					switch (board_back[i][j]){
+					case 'b': //bomb!
+						ctx.fillStyle = 'Red';
+						ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+						break;
+					case 0:
+						break;
+					case 1:
+						ctx.fillStyle = 'White';
+						ctx.font = '36px Georgia';
+						ctx.fillText('1', j*50 +17, i*50+100+35);
+						break;
+					case 2:
+						ctx.fillStyle = '#FFE6CC';
+						ctx.font = '36px Georgia';
+						ctx.fillText('2', j*50 +15, i*50+100+35);
+						break;
+					case 3:
+						ctx.fillStyle = '#FFCE99';
+						ctx.font = '36px Georgia';
+						ctx.fillText('3', j*50 +15, i*50+100+33);
+						break;	
+					case 4:
+						ctx.fillStyle = '#FFB566';
+						ctx.font = '36px Georgia';
+						ctx.fillText('4', j*50 +15, i*50+100+33);
+						break;	
+					case 5:
+						ctx.fillStyle = '#FF9C33';
+						ctx.font = '36px Georgia';
+						ctx.fillText('5', j*50 +15, i*50+100+33);
+						break;	
+					case 6:
+						ctx.fillStyle = '#FF8400';
+						ctx.font = '36px Georgia';
+						ctx.fillText('6', j*50 +15, i*50+100+33);
+						break;	
+					case 7:
+						ctx.fillStyle = '#FF8400';
+						ctx.font = '36px Georgia';
+						ctx.fillText('7', j*50 +15, i*50+100+33);
+						break;	
+					case 8:
+						ctx.fillStyle = '#FF8400';
+						ctx.font = '36px Georgia';
+						ctx.fillText('8', j*50 +15, i*50+100+33);
+						break;	
+					default:
+						ctx.fillStyle = 'Black';
+						ctx.fillRect(j*50+3, i*50+100+3, 44, 44);
+					}
+				}
+			}
+		}
+	}
+	//mouse up
+	function mouseUp(evt){
+		if (evt.which === 1){if (evt.pageX-c.offsetLeft>=165 && evt.pageX-c.offsetLeft<=235 && evt.pageY-c.offsetTop>=15 && evt.pageY-c.offsetTop <=85){
+			new_game();
+			update();}
+		}//restart button
+		if (evt.pageY-c.offsetTop >= 100){
+			var current_col = Math.floor((evt.pageX-c.offsetLeft)/50);
+			var current_row = Math.floor((evt.pageY-100-c.offsetTop)/50);
+			is_playing = true;
+		
+		if (!is_game_over && !is_winning){
+			if (evt.pageX-c.offsetLeft<=200){
+				face = 'left';
+			} else {
+				face = 'right';
+			}
+		if (evt.which === 1){  //left click
+			//open that block
+			if (board_cover[current_row][current_col] === 'c'){
+				board_cover[current_row][current_col] = 'o';
+				if (board_back[current_row][current_col] === 'b'){
+					game_over();
+				}	
+			} else if (board_cover[current_row][current_col] === 'o'){
+				unlock_around([current_row, current_col]);
+				if (is_openable([current_row, current_col])){
+					unlock_zero_group([current_row, current_col]);
+				}
+			}
+			if (board_back[current_row][current_col] === 0){
+				unlock_zero_group([current_row, current_col]);
+			}
+		}
+		else if (evt.which === 3){ //right click
+			if (board_cover[current_row][current_col] === 'c'){
+				board_cover[current_row][current_col] = 'f';
+				bomb_left -= 1;
+			} else if (board_cover[current_row][current_col] === 'f'){
+				board_cover[current_row][current_col] = 'q';
+				bomb_left += 1;
+			} else if (board_cover[current_row][current_col] === 'q'){
+				board_cover[current_row][current_col] = 'c';
+			}
+		}
+		zero_graph = new Array(WIDTH * HEIGHT);
+		zero_tree_size = new Array(WIDTH * HEIGHT);
+		for (var p = 0; p < WIDTH * HEIGHT; p++){
+			zero_graph[p] = p;
+		}
+		for (var i = 0; i < WIDTH * HEIGHT; i++){
+			zero_tree_size[i] = 1;
+		}
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				union_around([i,j]);
+			}
+		}
+	}
+		is_winning = check_winning();
+		update();
+		}
+	}
+	function game_over(){
+		is_game_over = true;
+		face = 'die';
+		for (var i = 0; i < HEIGHT; i++){
+			for (var j = 0; j < WIDTH; j++){
+				if (board_back[i][j] === 'b' && board_cover[i][j] === 'c'){
+					board_cover[i][j] = 'r'; //revealed
+				}
+				if (board_cover[i][j] === 'f' && board_back[i][j]!=='b'){
+					board_cover[i][j] = 'w'; //wrong guess
+				}		
+			}
+		}
+	}
+	
+	new_game();
+	update();
+	window.addEventListener('mouseup', mouseUp, true);
+	setInterval(function(){timer()}, 1000);
+	</script>
+	
+</body>
+</html>

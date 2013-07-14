@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Snake</title>
+</head>
+<body>
+	<h1>Snake!</h1>
+	<canvas id='myCanvas' width='500' height='500' style='border:5px solid black;'>Your browser doesn't support the HTML5 canvas tag...</canvas>
+
+	<script>
+	
+	var c = document.getElementById('myCanvas');
+	var ctx = c.getContext('2d');
+	//global variables
+	var cur_score = 1; //how long the snake is
+	var high_score = document.getElementById('highscore');
+	var backimg = ctx.getImageData(0, 0, 500, 500);
+	var head = 0; //which grid is the head current in
+	var N = 10; //N x N grid for the gameboard
+	var board = new Array(N); //data for the board
+	for (var i = 0; i < N; i++){
+		board[i] = new Array(N);
+	}
+	var snake = [[5, 5]]; //data for the snake: tail -> head
+	var direct = [0, 0];
+	//var random_x = Math.floor(Math.random()*N);
+	//var random_y = Math.floor(Math.random()*N);
+	//var food = [random_x, random_y];
+	var food = [Math.floor(Math.random()*N), Math.floor(Math.random()*N)];
+	var speed = 500;
+	//init() create a new gameboard
+	function init(){
+		for (var i = 0; i < N; i++) {
+			for (var j = 0; j < N; j++){
+				board[i][j] = 'b';//blank
+			}
+		}	
+	}
+	function new_game(){
+		init();
+		snake = [[5, 5]];
+		direct = [-1, 0];
+	}
+	function draw_frame(){
+		ctx.fillStyle = 'Black';
+		ctx.fillRect(0, 0, 500, 500);
+		ctx.stroke();
+		backimg = ctx.getImageData(0, 0, 500, 500);
+	}
+	// main game loop
+	function update(){
+		ctx.putImageData(backimg, 0, 0); //cover previous image
+		
+		// update snake head and body
+		var new_head = [];
+	    new_head[0] = (snake[snake.length-1][0] + direct[0] + 10) % 10;
+ 		new_head[1] = (snake[snake.length-1][1] + direct[1] + 10) % 10;
+		snake.push(new_head);
+		if (board[new_head[0]][new_head[1]]==='s'){		
+			alert('Ouch! You ate youself!');
+			if (cur_score > high_score){
+				high_score = cur_score;
+			}
+			new_game();
+		}
+		else if (new_head[0] === food[0] && new_head[1] === food[1]){
+			var random_x = Math.floor(Math.random()*N);
+			var random_y = Math.floor(Math.random()*N);
+			while (board[random_x][random_y] !== 'b'){
+				random_x = Math.floor(Math.random()*N);
+				random_y = Math.floor(Math.random()*N);
+			}
+			food = [random_x, random_y];
+			cur_score += 1;
+			speed -= 10;
+		}
+		else {
+			snake.splice(0, 1);		
+		}	    	
+		// update board
+		init();	 // blank board	
+		board[food[0]][food[1]] = 'f'; // food
+		for (var s = 0; s < snake.length-1; s++){
+			board[snake[s][0]][snake[s][1]] = 's'; //snake body
+		}
+		board[new_head[0]][new_head[1]] = 'h'; //snake head
+		// draw board
+		for (var i = 0; i < N; i++){
+			for (var j = 0; j < N; j++){
+				if (board[i][j] === 'h'){
+					ctx.fillStyle = 'White';
+					ctx.fillRect(i * 50, j * 50, 50, 50);
+					ctx.stroke();
+				}
+				else if (board[i][j] === 's'){
+					ctx.fillStyle = 'White';
+					ctx.fillRect(i * 50+3, j * 50+3, 44, 44);
+					ctx.stroke();
+				}
+				else if (board[i][j] === 'f'){
+					ctx.fillStyle = 'Green';
+					ctx.fillRect(i * 50, j * 50, 50, 50);
+					ctx.stroke();
+				}
+			}
+		}
+	}
+	//key event handler
+	function whatKeyDown(evt){
+		switch(evt.keyCode){
+		case 40: //down arrow
+			direct = [0, 1];
+			break;
+		case 38: //up arrow
+			direct = [0, -1];
+			break;
+		case 37: //left arrow
+			direct = [-1, 0];
+			break;
+		case 39: // right arrow
+			direct = [1, 0];
+			break;
+		}
+	}
+	new_game();
+	draw_frame();
+	//update();
+	setInterval(function(){update()}, speed);
+	window.addEventListener('keydown', whatKeyDown, true);
+	
+	</script>
+	<div>
+		
+		<button type='button' onclick='new_game();'>New Game</button>
+	</div>
+	
+</body>
+</html>
