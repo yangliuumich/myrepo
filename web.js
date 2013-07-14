@@ -2,10 +2,27 @@ var express = require("express");
 var fs = require("fs");
 var app = express.createServer(express.logger());
 
-var buffer = fs.readFileSync("index.html");
+var link = function(pagename){
+  var buffer = fs.readFileSync(pagename);
+  return buffer;
+};
 
 app.get('/',function(request, response){
-    response.send(buffer.toString());
+    response.send(link("index.html").toString());
+});
+
+app.get('/minesweeper', function(request, response){
+    response.send(link("minesweeper.html").toString());
+});
+
+
+app.get('/snake', function(request, response){
+    response.send(link("snake.html").toString());
+});
+
+
+app.get('/pong', function(request, response){
+    response.send(link("pong.html").toString());
 });
 
 var port = process.env.PORT || 5000;
